@@ -31,6 +31,8 @@ object Settings {
     private const val KEY_GPS_CALIBRATION = "gps_calibration"
     private const val KEY_ROOT_ENABLED = "root_enabled"
     private const val KEY_METRONOME_TARGET = "metronome_target"
+    private const val KEY_VOICE_COACH = "voice_coach"
+    private const val KEY_MAP_TILES = "map_tiles"
 
     fun prefs(ctx: Context) = ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -95,6 +97,18 @@ object Settings {
     fun metronomeTarget(ctx: Context) = prefs(ctx).getInt(KEY_METRONOME_TARGET, 110)
     fun setMetronomeTarget(ctx: Context, v: Int) =
         prefs(ctx).edit().putInt(KEY_METRONOME_TARGET, v).apply()
+
+    fun voiceCoach(ctx: Context) = prefs(ctx).getBoolean(KEY_VOICE_COACH, true)
+    fun setVoiceCoach(ctx: Context, v: Boolean) =
+        prefs(ctx).edit().putBoolean(KEY_VOICE_COACH, v).apply()
+
+    /**
+     * Off by default: map tiles are the only thing in the app that touches the
+     * network, so it stays an explicit choice rather than a quiet default.
+     */
+    fun mapTiles(ctx: Context) = prefs(ctx).getBoolean(KEY_MAP_TILES, false)
+    fun setMapTiles(ctx: Context, v: Boolean) =
+        prefs(ctx).edit().putBoolean(KEY_MAP_TILES, v).apply()
 
     // ---- boot identity ----------------------------------------------------
 

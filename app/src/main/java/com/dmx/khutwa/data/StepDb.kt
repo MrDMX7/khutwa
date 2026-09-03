@@ -21,13 +21,16 @@ class StepDb private constructor(context: Context) :
         /**
          * v1: days(date, steps) only.
          * v2: per-class breakdown, derived metrics, and the intraday tables.
+         * v3: explicit recorded sessions and their GPS routes.
          */
-        const val VERSION = 2
+        const val VERSION = 3
 
         const val TABLE_DAYS = "days"
         const val TABLE_MINUTES = "minutes"
         const val TABLE_BOUTS = "bouts"
         const val TABLE_STRIDE = "stride_samples"
+        const val TABLE_SESSIONS = "sessions"
+        const val TABLE_ROUTE = "route_points"
 
         @Volatile private var instance: StepDb? = null
 
@@ -52,12 +55,14 @@ class StepDb private constructor(context: Context) :
             """.trimIndent()
         )
         upgradeToV2(db)
+        upgradeToV3(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // v1 shipped with an empty onUpgrade, so a version bump would have
         // silently done nothing. Real migrations from here on.
         if (oldVersion < 2) upgradeToV2(db)
+        if (oldVersion < 3) upgradeToV3(db)
     }
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -141,6 +146,52 @@ class StepDb private constructor(context: Context) :
             )
             """.trimIndent()
         )
+    }
+
+    /**
+     * Explicitly recorded runs, and the GPS trace for each.
+     *
+     * Distinct from `bouts`, which are auto-detected from cadence after the
+     * fact. A session is something the user deliberately started, so it can
+     * carry a route, live coaching and a warm-up/cool-down structure that an
+     * inferred bout cannot.
+     */
+    private fun upgradeToV3(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_SESSIONS (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                start_ms INTEGER NOT NULL,
+                end_ms INTEGER NOT NULL,
+                steps INTEGER NOT NULL DEFAULT 0,
+                distance_m REAL NOT NULL DEFAULT 0,
+                kcal REAL NOT NULL DEFAULT 0,
+                avg_cadence INTEGER NOT NULL DEFAULT 0,
+                max_cadence INTEGER NOT NULL DEFAULT 0,
+                elev_gain_m REAL NOT NULL DEFAULT 0,
+                active_minutes INTEGER NOT NULL DEFAULT 0,
+                note TEXT
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_sessions_date ON $TABLE_SESSIONS(date)")
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_ROUTE (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                ts_ms INTEGER NOT NULL,
+                lat REAL NOT NULL,
+                lon REAL NOT NULL,
+                alt_m REAL NOT NULL DEFAULT 0,
+                accuracy_m REAL NOT NULL DEFAULT 0,
+                speed_mps REAL NOT NULL DEFAULT 0
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_route_session ON $TABLE_ROUTE(session_id, ts_ms)")
     }
 
     private fun columnsOf(db: SQLiteDatabase, table: String): Set<String> {

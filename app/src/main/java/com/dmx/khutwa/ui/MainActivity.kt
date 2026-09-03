@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -124,9 +125,12 @@ class MainActivity : ComponentActivity() {
 
 private enum class Tab(val label: String, val icon: Int) {
     TODAY("اليوم", R.drawable.ic_steps),
+    SESSION("جلسة", R.drawable.ic_run),
     HISTORY("السجل", R.drawable.ic_history),
     ANALYSIS("التحليل", R.drawable.ic_analysis),
-    SETTINGS("الإعدادات", R.drawable.ic_settings),
+    KNOWLEDGE("المعرفة", R.drawable.ic_book),
+    // Six tabs leave each label narrow; "الإعدادات" wrapped to two lines.
+    SETTINGS("إعدادات", R.drawable.ic_settings),
 }
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
@@ -172,7 +176,7 @@ private fun Root(
                         selected = tab == t,
                         onClick = { tab = t },
                         icon = { Icon(painterResource(t.icon), t.label) },
-                        label = { Text(t.label) },
+                        label = { Text(t.label, maxLines = 1, softWrap = false) },
                     )
                 }
             }
@@ -187,7 +191,15 @@ private fun Root(
                             selected = tab == t,
                             onClick = { tab = t },
                             icon = { Icon(painterResource(t.icon), t.label) },
-                            label = { Text(t.label) },
+                            label = {
+                                Text(
+                                    t.label,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Visible,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
                         )
                     }
                 }
@@ -202,8 +214,10 @@ private fun Root(
 private fun TabContent(tab: Tab, vm: KhutwaViewModel, state: KhutwaState) {
     when (tab) {
         Tab.TODAY -> TodayScreen(state)
+        Tab.SESSION -> SessionScreen(state, vm)
         Tab.HISTORY -> HistoryScreen(state)
         Tab.ANALYSIS -> AnalysisScreen(state, vm)
+        Tab.KNOWLEDGE -> KnowledgeScreen(state)
         Tab.SETTINGS -> SettingsScreen(state, vm)
     }
 }

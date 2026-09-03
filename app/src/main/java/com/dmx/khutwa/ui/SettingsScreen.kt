@@ -30,7 +30,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.dmx.khutwa.data.Exporter
+import com.dmx.khutwa.data.MapTiles
 import com.dmx.khutwa.data.RootBridge
+import com.dmx.khutwa.data.SessionRecorder
 import com.dmx.khutwa.data.Settings
 import com.dmx.khutwa.data.StepRepository
 import com.dmx.khutwa.data.StrideCalibrator
@@ -179,6 +181,33 @@ fun SettingsScreen(state: KhutwaState, vm: KhutwaViewModel) {
                 ToggleRow("عرض السعرات الكلية (نشاط + أيض أساسي)", state.totalCalories) {
                     vm.setTotalCalories(it)
                 }
+            }
+        }
+
+        item {
+            Card {
+                SectionTitle("الصوت والخريطة")
+                Spacer(Modifier.height(12.dp))
+                var voice by remember { mutableStateOf(Settings.voiceCoach(context)) }
+                ToggleRow("المدرّب الصوتي في الجلسات", voice) {
+                    voice = it
+                    Settings.setVoiceCoach(context, it)
+                    SessionRecorder.setVoice(it)
+                }
+                Spacer(Modifier.height(12.dp))
+                var cacheMb by remember { mutableStateOf(MapTiles.cacheSizeBytes(context) / 1024f / 1024f) }
+                Text(
+                    "ذاكرة بلاطات الخريطة: ${"%.1f".format(cacheMb)} ميجابايت. " +
+                        "البلاطات تُحفظ محلياً فتُفتح الجلسة القديمة بدون إنترنت.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(onClick = {
+                    MapTiles.clearCache(context)
+                    cacheMb = 0f
+                    status = "مُسحت ذاكرة الخريطة"
+                }) { Text("مسح ذاكرة الخريطة") }
             }
         }
 

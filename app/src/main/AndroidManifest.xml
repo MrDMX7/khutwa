@@ -8,10 +8,19 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH"/>
 
-    <!-- Only used opportunistically to calibrate stride length; the app never
-         records a background location session and works fully without this. -->
+    <!-- Used to calibrate stride length opportunistically, and to record a
+         route during a session the user explicitly started. The app never runs
+         a background location session and works fully without this. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+
+    <!-- ONLY for optional OpenStreetMap tiles behind a route, off by default.
+         MapTiles.kt is the single file in this app that opens a connection;
+         nothing else here talks to a network, and there is no analytics,
+         no ads and no telemetry. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
     <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="true"/>
     <uses-feature android:name="android.hardware.sensor.stepdetector" android:required="false"/>

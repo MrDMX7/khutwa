@@ -9,6 +9,8 @@ import com.dmx.khutwa.domain.Cadence
 import com.dmx.khutwa.domain.DayAggregate
 import com.dmx.khutwa.domain.DayStats
 import com.dmx.khutwa.domain.MinuteBucket
+import com.dmx.khutwa.domain.RoutePoint
+import com.dmx.khutwa.domain.Session
 import com.dmx.khutwa.domain.StrideSample
 
 /**
@@ -230,6 +232,80 @@ class StepDao(context: Context) {
         db.query(StepDb.TABLE_BOUTS, null, null, null, null, null, "start_ms DESC", limit.toString())
             .use { c -> buildList { while (c.moveToNext()) add(c.toBout()) } }
 
+    // ---- sessions & routes ------------------------------------------------
+
+    fun startSession(date: String, startMs: Long): Long =
+        db.insert(StepDb.TABLE_SESSIONS, null, ContentValues().apply {
+            put("date", date)
+            put("start_ms", startMs)
+            put("end_ms", startMs)
+        })
+
+    fun updateSession(s: Session) {
+        db.update(StepDb.TABLE_SESSIONS, ContentValues().apply {
+            put("end_ms", s.endMs)
+            put("steps", s.steps)
+            put("distance_m", s.distanceM)
+            put("kcal", s.kcal)
+            put("avg_cadence", s.avgCadence)
+            put("max_cadence", s.maxCadence)
+            put("elev_gain_m", s.elevGainM)
+            put("active_minutes", s.activeMinutes)
+            put("note", s.note)
+        }, "id = ?", arrayOf(s.id.toString()))
+    }
+
+    fun session(id: Long): Session? =
+        db.query(StepDb.TABLE_SESSIONS, null, "id = ?", arrayOf(id.toString()), null, null, null)
+            .use { c -> if (c.moveToFirst()) c.toSession() else null }
+
+    fun sessions(limit: Int = 100): List<Session> =
+        db.query(StepDb.TABLE_SESSIONS, null, "distance_m > 0 OR steps > 0", null,
+            null, null, "start_ms DESC", limit.toString())
+            .use { c -> buildList { while (c.moveToNext()) add(c.toSession()) } }
+
+    /** Remove sessions that were started and abandoned without recording anything. */
+    fun pruneEmptySessions() {
+        db.delete(StepDb.TABLE_SESSIONS, "steps = 0 AND distance_m = 0", null)
+    }
+
+    fun addRoutePoint(sessionId: Long, p: RoutePoint) {
+        db.insert(StepDb.TABLE_ROUTE, null, ContentValues().apply {
+            put("session_id", sessionId)
+            put("ts_ms", p.tsMs)
+            put("lat", p.lat)
+            put("lon", p.lon)
+            put("alt_m", p.altM)
+            put("accuracy_m", p.accuracyM)
+            put("speed_mps", p.speedMps)
+        })
+    }
+
+    fun routeFor(sessionId: Long): List<RoutePoint> =
+        db.query(
+            StepDb.TABLE_ROUTE,
+            arrayOf("ts_ms", "lat", "lon", "alt_m", "accuracy_m", "speed_mps"),
+            "session_id = ?", arrayOf(sessionId.toString()), null, null, "ts_ms ASC"
+        ).use { c ->
+            buildList {
+                while (c.moveToNext()) {
+                    add(RoutePoint(c.getLong(0), c.getDouble(1), c.getDouble(2),
+                        c.getDouble(3), c.getDouble(4), c.getDouble(5)))
+                }
+            }
+        }
+
+    fun deleteSession(id: Long) {
+        db.beginTransaction()
+        try {
+            db.delete(StepDb.TABLE_ROUTE, "session_id = ?", arrayOf(id.toString()))
+            db.delete(StepDb.TABLE_SESSIONS, "id = ?", arrayOf(id.toString()))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     // ---- stride samples ---------------------------------------------------
 
     fun addStrideSample(s: StrideSample) {
@@ -281,6 +357,21 @@ class StepDao(context: Context) {
         peak30Cadence = getInt(getColumnIndexOrThrow("peak30_cadence")),
         peak1Cadence = getInt(getColumnIndexOrThrow("peak1_cadence")),
         goal = getInt(getColumnIndexOrThrow("goal")),
+    )
+
+    private fun android.database.Cursor.toSession() = Session(
+        id = getLong(getColumnIndexOrThrow("id")),
+        date = getString(getColumnIndexOrThrow("date")),
+        startMs = getLong(getColumnIndexOrThrow("start_ms")),
+        endMs = getLong(getColumnIndexOrThrow("end_ms")),
+        steps = getInt(getColumnIndexOrThrow("steps")),
+        distanceM = getDouble(getColumnIndexOrThrow("distance_m")),
+        kcal = getDouble(getColumnIndexOrThrow("kcal")),
+        avgCadence = getInt(getColumnIndexOrThrow("avg_cadence")),
+        maxCadence = getInt(getColumnIndexOrThrow("max_cadence")),
+        elevGainM = getDouble(getColumnIndexOrThrow("elev_gain_m")),
+        activeMinutes = getInt(getColumnIndexOrThrow("active_minutes")),
+        note = getString(getColumnIndexOrThrow("note")),
     )
 
     private fun android.database.Cursor.toBout() = Bout(

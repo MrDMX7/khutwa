@@ -15,6 +15,7 @@ import com.dmx.khutwa.domain.Insights
 import com.dmx.khutwa.domain.Metrics
 import com.dmx.khutwa.domain.MinuteBucket
 import com.dmx.khutwa.domain.Profile
+import com.dmx.khutwa.domain.Session
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,7 @@ data class KhutwaState(
     val ghost: Ghost.DayGhost? = null,
     val records: Ghost.Records = Ghost.Records(),
     val heatmap: Array<IntArray> = Array(7) { IntArray(24) },
+    val sessions: List<Session> = emptyList(),
     val weeklyActiveMinutes: Int = 0,
     val profile: Profile = Profile(),
     val arabicDigits: Boolean = true,
@@ -56,6 +58,7 @@ data class KhutwaState(
             ghost == other.ghost &&
             records == other.records &&
             heatmap.contentDeepEquals(other.heatmap) &&
+            sessions == other.sessions &&
             weeklyActiveMinutes == other.weeklyActiveMinutes &&
             profile == other.profile &&
             arabicDigits == other.arabicDigits &&
@@ -151,6 +154,7 @@ class KhutwaViewModel(app: Application) : AndroidViewModel(app) {
             ghost = Ghost.sameWeekdayGhost(todayIso, minutes, minutesByDate, nowMinute),
             records = Ghost.records(history, dao.allBouts(500)),
             heatmap = heatmap,
+            sessions = dao.sessions(50),
             weeklyActiveMinutes = history.take(7).sumOf { it.activeMinutes },
             profile = profile,
             arabicDigits = Settings.arabicDigits(ctx),
