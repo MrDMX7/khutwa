@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="true"/>
+
+    <application
+        android:label="خطوة"
+        android:allowBackup="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Khutwa">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:label="خطوة">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".sensor.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".sensor.CheckpointReceiver"
+            android:exported="false"/>
+    </application>
+</manifest>
