@@ -1,6 +1,5 @@
 package com.dmx.khutwa.data
 
-import android.content.ContentValues
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -8,38 +7,52 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
 import android.os.Looper
+import com.dmx.khutwa.domain.Bouts
+import com.dmx.khutwa.domain.DayStats
+import com.dmx.khutwa.domain.MinuteBucket
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 
 /**
- * Reads the hardware step counter and turns it into a per-day total.
+ * Owns the authoritative step total.
  *
- * TYPE_STEP_COUNTER is cumulative since the last device boot and keeps
- * counting at the sensor-hub level with nobody listening — that's the whole
- * point of this app over the third-party one it replaces: correctness never
- * depends on staying resident, only on getting a chance to read the current
- * value periodically. See the plan doc for why this design was chosen.
+ * The design that makes this app correct, unchanged from v1: TYPE_STEP_COUNTER
+ * is cumulative and keeps counting in the sensor hub with nobody listening, so
+ * correctness only requires getting a chance to read it periodically — never
+ * staying resident. Verified on-device: the stored day totals since the last
+ * reboot sum to exactly the hardware counter's value.
+ *
+ * v2 adds a derived layer (classification, distance, calories) on top from
+ * step-detector timestamps, but that layer is never allowed to change the
+ * total. See [reconcile].
  */
 object StepRepository {
 
-    private const val PREFS = "khutwa_prefs"
-    private const val KEY_LAST_RAW = "last_raw"
-    private const val KEY_BUCKET_DATE = "bucket_date"
     private const val SENSOR_WAIT_TIMEOUT_MS = 8_000L
 
     private val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
+    /** All DB work happens here; callers on the main thread never block. */
+    private val io = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "khutwa-io").apply { isDaemon = true }
+    }
+
+    @Synchronized
     private fun today(): String = dayFormat.format(Date())
 
-    private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    @Synchronized
+    fun dateOf(millis: Long): String = dayFormat.format(Date(millis))
+
+    private fun dao(ctx: Context) = StepDao(ctx)
+
+    // ---- sensor -----------------------------------------------------------
 
     /**
-     * Reads the current cumulative step count once. Registers a listener,
-     * takes the first value delivered (TYPE_STEP_COUNTER fires promptly on
-     * registration with the current total), then unregisters immediately —
-     * never stays resident. Times out defensively since this commonly runs
-     * inside a BroadcastReceiver with a bounded execution window.
+     * Reads the cumulative step count once, then unregisters — never stays
+     * resident. Times out defensively because this commonly runs inside a
+     * BroadcastReceiver with a bounded execution window.
      */
     fun readSensorOnce(context: Context, onResult: (Long?) -> Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -73,90 +86,203 @@ object StepRepository {
         handler.postDelayed({ finish(null) }, SENSOR_WAIT_TIMEOUT_MS)
     }
 
-    /**
-     * One checkpoint: read the sensor, fold the delta into today's total.
-     * Safe to call from anywhere, any time — this is the only correctness
-     * primitive the whole app relies on.
-     */
+    // ---- checkpointing ----------------------------------------------------
+
     fun checkpoint(context: Context, onDone: () -> Unit = {}) {
         readSensorOnce(context) { raw ->
-            if (raw != null) applyReading(context, raw)
-            onDone()
+            if (raw == null) {
+                onDone()
+                return@readSensorOnce
+            }
+            io.execute {
+                try {
+                    applyReading(context, raw, closingDate = null)
+                } finally {
+                    onDone()
+                }
+            }
         }
-    }
-
-    private fun applyReading(context: Context, raw: Long) {
-        val p = prefs(context)
-        val bucketDate = p.getString(KEY_BUCKET_DATE, null)
-        val lastRaw = p.getLong(KEY_LAST_RAW, -1L)
-        val todayKey = today()
-
-        if (bucketDate == null || lastRaw < 0) {
-            // First run ever: nothing to diff against yet, just establish a baseline.
-            ensureDayRow(context, todayKey)
-            p.edit().putLong(KEY_LAST_RAW, raw).putString(KEY_BUCKET_DATE, todayKey).apply()
-            return
-        }
-
-        if (bucketDate != todayKey) {
-            // Midnight passed without the exact alarm firing (safety net) — start
-            // fresh rather than attribute a stale multi-day span to either date.
-            ensureDayRow(context, todayKey)
-            p.edit().putLong(KEY_LAST_RAW, raw).putString(KEY_BUCKET_DATE, todayKey).apply()
-            return
-        }
-
-        if (raw >= lastRaw) {
-            val delta = raw - lastRaw
-            if (delta > 0) addSteps(context, bucketDate, delta)
-        }
-        // raw < lastRaw means the device rebooted (the hardware counter reset).
-        // Don't subtract — today's total already banked from before the reboot
-        // stays as-is; we just resume counting from the new baseline.
-        p.edit().putLong(KEY_LAST_RAW, raw).apply()
     }
 
     /**
-     * Called by the midnight alarm specifically: finalizes whatever's pending
-     * for the closing day, then rolls the bucket forward. Distinct from the
-     * safety-net path above, which only fires if this was missed.
+     * The midnight alarm. Fires at 00:00:05, i.e. *after* the date has already
+     * rolled over.
+     *
+     * v1 routed this through the ordinary checkpoint, where `today()` was
+     * already the new date while `bucket_date` still held the closing day. That
+     * hit the day-mismatch branch, which re-baselines and returns **without
+     * crediting the pending delta** — so the steps between the last periodic
+     * checkpoint and midnight were silently discarded every single night. It
+     * went unnoticed because the user is rarely walking at midnight, but the
+     * loss was real whenever they were.
+     *
+     * The fix: tell [applyReading] explicitly which day is closing, so the
+     * final delta is credited to it before the bucket rolls forward.
      */
     fun rolloverMidnight(context: Context, onDone: () -> Unit = {}) {
-        checkpoint(context) {
-            val todayKey = today()
-            ensureDayRow(context, todayKey)
-            prefs(context).edit().putString(KEY_BUCKET_DATE, todayKey).apply()
-            onDone()
+        val closing = Settings.prefs(context).getString(Settings.KEY_BUCKET_DATE, null)
+        readSensorOnce(context) { raw ->
+            if (raw == null) {
+                onDone()
+                return@readSensorOnce
+            }
+            io.execute {
+                try {
+                    applyReading(context, raw, closingDate = closing)
+                } finally {
+                    onDone()
+                }
+            }
         }
     }
 
-    private fun ensureDayRow(context: Context, date: String) {
-        val db = StepDb(context).writableDatabase
-        val cv = ContentValues().apply { put("date", date); put("steps", 0) }
-        db.insertWithOnConflict(StepDb.TABLE, null, cv, android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE)
+    /**
+     * @param closingDate when non-null, the pending delta belongs to this date
+     *        rather than being dropped — the midnight path.
+     */
+    private fun applyReading(context: Context, raw: Long, closingDate: String?) {
+        val p = Settings.prefs(context)
+        val bucketDate = p.getString(Settings.KEY_BUCKET_DATE, null)
+        val lastRaw = p.getLong(Settings.KEY_LAST_RAW, -1L)
+        val todayKey = today()
+        val goal = Settings.goal(context)
+        val d = dao(context)
+
+        if (bucketDate == null || lastRaw < 0) {
+            // First run ever: nothing to diff against, just establish a baseline.
+            d.ensureDay(todayKey, goal)
+            p.edit()
+                .putLong(Settings.KEY_LAST_RAW, raw)
+                .putString(Settings.KEY_BUCKET_DATE, todayKey)
+                .apply()
+            Settings.saveBootId(context, Settings.currentBootId())
+            return
+        }
+
+        // Reboot: the hardware counter reset, so `raw` is a new baseline rather
+        // than a smaller total. Corroborated by the boot marker so a sensor-hub
+        // glitch that happens to lower the count isn't mistaken for a restart.
+        val rebooted = raw < lastRaw || Settings.rebootedSince(context)
+        if (rebooted) {
+            d.ensureDay(todayKey, goal)
+            // `raw` is now the count since boot, so those steps are unbanked.
+            // Credit them only when the boot itself happened today — otherwise
+            // the span crosses a midnight we can no longer place, and guessing
+            // would corrupt two days rather than losing part of one.
+            val bootDate = dateOf(Settings.currentBootId() * 1000L)
+            if (raw > 0 && bootDate == todayKey) d.addSteps(todayKey, raw, goal)
+            p.edit()
+                .putLong(Settings.KEY_LAST_RAW, raw)
+                .putString(Settings.KEY_BUCKET_DATE, todayKey)
+                .apply()
+            Settings.saveBootId(context, Settings.currentBootId())
+            recomputeDerived(context, todayKey)
+            return
+        }
+
+        val delta = raw - lastRaw
+
+        if (bucketDate != todayKey) {
+            // The day changed. Credit the pending delta to whichever day owns it.
+            val target = closingDate ?: bucketDate
+            d.ensureDay(target, goal)
+            d.ensureDay(todayKey, goal)
+            if (delta > 0) d.addSteps(target, delta, goal)
+            p.edit()
+                .putLong(Settings.KEY_LAST_RAW, raw)
+                .putString(Settings.KEY_BUCKET_DATE, todayKey)
+                .apply()
+            recomputeDerived(context, target)
+            return
+        }
+
+        if (delta > 0) d.addSteps(bucketDate, delta, goal)
+        // Keep today in step with the current goal; changing it mid-day should
+        // move the ring, not leave it measuring against yesterday's target.
+        d.setGoal(todayKey, goal)
+        p.edit().putLong(Settings.KEY_LAST_RAW, raw).apply()
+        Settings.saveBootId(context, Settings.currentBootId())
+        recomputeDerived(context, bucketDate)
     }
 
-    private fun addSteps(context: Context, date: String, delta: Long) {
-        val db = StepDb(context).writableDatabase
-        ensureDayRow(context, date)
-        db.execSQL("UPDATE ${StepDb.TABLE} SET steps = steps + ? WHERE date = ?", arrayOf(delta, date))
+    // ---- derived layer ----------------------------------------------------
+
+    /**
+     * Recompute a day's breakdown from its minute buckets.
+     *
+     * Wholesale rather than incremental, so re-running is idempotent and a bad
+     * detector batch can't compound across the day.
+     */
+    fun recomputeDerived(context: Context, date: String) {
+        val d = dao(context)
+        val profile = Settings.profile(context)
+        val minutes = d.minutesFor(date)
+        if (minutes.isEmpty()) return
+        val grade = BarometerTracker.gradeLookup(context, date)
+        val agg = Bouts.aggregate(minutes, profile, grade)
+        val elevGain = BarometerTracker.gainFor(context, date)
+        d.writeAggregate(date, agg, com.dmx.khutwa.domain.Metrics.floorsFromGain(elevGain), elevGain)
+        d.replaceBouts(date, Bouts.segment(minutes, profile, grade))
     }
 
-    fun todaySteps(context: Context): Long = stepsFor(context, today())
-
-    fun stepsFor(context: Context, date: String): Long {
-        val db = StepDb(context).readableDatabase
-        db.query(StepDb.TABLE, arrayOf("steps"), "date = ?", arrayOf(date), null, null, null).use { c ->
-            return if (c.moveToFirst()) c.getLong(0) else 0L
+    /** Called by the detector engine when a batch of step timestamps arrives. */
+    fun ingestMinutes(context: Context, buckets: List<MinuteBucket>) {
+        if (buckets.isEmpty()) return
+        io.execute {
+            val d = dao(context)
+            val goal = Settings.goal(context)
+            for (date in buckets.map { it.date }.distinct()) d.ensureDay(date, goal)
+            d.upsertMinutes(buckets)
+            for (date in buckets.map { it.date }.distinct()) recomputeDerived(context, date)
         }
     }
 
-    /** Most recent [limit] days, newest first, including days with 0 steps if they have a row. */
-    fun recentDays(context: Context, limit: Int = 7): List<Pair<String, Long>> {
-        val db = StepDb(context).readableDatabase
-        val out = mutableListOf<Pair<String, Long>>()
-        db.query(StepDb.TABLE, arrayOf("date", "steps"), null, null, null, null, "date DESC", limit.toString())
-            .use { c -> while (c.moveToNext()) out.add(c.getString(0) to c.getLong(1)) }
-        return out
+    /**
+     * The invariant that protects the property this app was built for.
+     *
+     * The step detector is a non-wakeup sensor with a 300-event reserved FIFO;
+     * if it overflows while the CPU is asleep the oldest events are dropped
+     * silently. That makes the classified breakdown potentially incomplete —
+     * but the hardware counter never misses, so `days.steps` stays
+     * authoritative and the shortfall simply surfaces as unclassified steps.
+     *
+     * In other words: classification degrades gracefully, the total never does.
+     */
+    fun reconcile(context: Context, date: String): Long {
+        val stats = dao(context).day(date) ?: return 0
+        return stats.unclassifiedSteps
+    }
+
+    // ---- reads (all off the main thread via [query]) -----------------------
+
+    fun <T> query(context: Context, block: (StepDao) -> T, onResult: (T) -> Unit) {
+        io.execute {
+            val result = block(dao(context))
+            Handler(Looper.getMainLooper()).post { onResult(result) }
+        }
+    }
+
+    fun todaySteps(context: Context): Long = dao(context).day(today())?.steps ?: 0L
+
+    fun todayDate(): String = today()
+
+    fun dayStats(context: Context, date: String): DayStats? = dao(context).day(date)
+
+    fun recentDays(context: Context, limit: Int = 7): List<DayStats> =
+        dao(context).recentDays(limit)
+
+    /**
+     * Diagnostics: the live hardware counter against the sum of stored days
+     * since the last reboot. These should agree exactly — that equality is the
+     * regression test for the whole engine.
+     */
+    fun diagnostics(context: Context, onResult: (raw: Long?, storedSinceBoot: Long) -> Unit) {
+        readSensorOnce(context) { raw ->
+            io.execute {
+                val bootDate = dateOf(Settings.currentBootId() * 1000L)
+                val stored = dao(context).sumStepsSince(bootDate)
+                Handler(Looper.getMainLooper()).post { onResult(raw, stored) }
+            }
+        }
     }
 }

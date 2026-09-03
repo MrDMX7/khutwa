@@ -7,53 +7,87 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.CompositionLocalProvider
+import com.dmx.khutwa.R
 import com.dmx.khutwa.Scheduler
+import com.dmx.khutwa.data.Settings
+import com.dmx.khutwa.data.StepDetectorService
 import com.dmx.khutwa.data.StepRepository
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.dmx.khutwa.ui.theme.KhutwaTheme
 
 class MainActivity : ComponentActivity() {
 
     private var onPermissionResult: (() -> Unit)? = null
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        val permissionLauncher = registerForActivityResult(
-            ActivityResultContracts.RequestPermission()
-        ) { granted ->
+    private val requestActivityRecognition =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
                 StepRepository.checkpoint(applicationContext) {}
                 Scheduler.scheduleAll(applicationContext)
+                startTracking()
             }
             onPermissionResult?.invoke()
         }
 
+    private val requestNotifications =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            KhutwaTheme(dark = true) {
+                // Arabic-first: force RTL regardless of device locale.
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    HomeScreen(
-                        onRequestPermission = { after ->
-                            onPermissionResult = after
-                            permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-                        }
+                    Root(
+                        hasPermission = ::hasPermission,
+                        requestPermission = { done ->
+                            onPermissionResult = done
+                            requestActivityRecognition.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                        },
+                        onOnboarded = {
+                            Settings.setOnboarded(applicationContext, true)
+                            askNotificationPermission()
+                            startTracking()
+                        },
                     )
                 }
             }
@@ -64,111 +98,140 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (hasPermission()) {
             StepRepository.checkpoint(applicationContext) {}
-            // Idempotent (same request codes just replace the pending alarm),
-            // so it's safe to call on every resume. This is the fallback path
-            // for whenever permission was already granted some other way
-            // (e.g. granted directly, not through the in-app button) — without
-            // it, the periodic/midnight alarms could end up never scheduled.
+            // Idempotent: identical request codes replace the pending alarms, so
+            // this is the recovery path if the self-rescheduling chain ever broke.
             Scheduler.scheduleAll(applicationContext)
+            if (Settings.isOnboarded(applicationContext)) startTracking()
         }
     }
 
-    private fun hasPermission(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) ==
-            PackageManager.PERMISSION_GRANTED
+    private fun startTracking() {
+        runCatching { StepDetectorService.start(applicationContext) }
+    }
+
+    private fun askNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun hasPermission(): Boolean = ContextCompat.checkSelfPermission(
+        this, Manifest.permission.ACTIVITY_RECOGNITION
+    ) == PackageManager.PERMISSION_GRANTED
 }
 
+private enum class Tab(val label: String, val icon: Int) {
+    TODAY("اليوم", R.drawable.ic_steps),
+    HISTORY("السجل", R.drawable.ic_history),
+    ANALYSIS("التحليل", R.drawable.ic_analysis),
+    SETTINGS("الإعدادات", R.drawable.ic_settings),
+}
+
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
-private fun HomeScreen(onRequestPermission: (onDone: () -> Unit) -> Unit) {
+private fun Root(
+    hasPermission: () -> Boolean,
+    requestPermission: (() -> Unit) -> Unit,
+    onOnboarded: () -> Unit,
+) {
     val context = LocalContext.current
-    var granted by remember { mutableStateOf(hasPermissionNow(context)) }
-    var today by remember { mutableLongStateOf(StepRepository.todaySteps(context)) }
-    var history by remember { mutableStateOf(StepRepository.recentDays(context, 7)) }
+    var granted by remember { mutableStateOf(hasPermission()) }
+    var onboarded by remember { mutableStateOf(Settings.isOnboarded(context)) }
 
-    fun refresh() {
-        today = StepRepository.todaySteps(context)
-        history = StepRepository.recentDays(context, 7)
+    if (!granted) {
+        PermissionScreen(onRequest = { requestPermission { granted = hasPermission() } })
+        return
+    }
+    if (!onboarded) {
+        OnboardingScreen(onDone = {
+            onOnboarded()
+            onboarded = true
+        })
+        return
     }
 
-    LaunchedEffect(granted) {
-        if (granted) refresh()
-    }
+    val vm: KhutwaViewModel = viewModel()
+    val state by vm.state.collectAsStateWithLifecycle()
+    var tab by remember { mutableStateOf(Tab.TODAY) }
 
-    Scaffold(
-        topBar = {
-            Surface {
-                Text("خطوة", fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(20.dp, 14.dp))
-            }
-        }
-    ) { pad ->
-        if (!granted) {
-            PermissionScreen(Modifier.padding(pad)) {
-                onRequestPermission {
-                    granted = hasPermissionNow(context)
-                    refresh()
+    LaunchedEffect(Unit) { vm.checkpointAndRefresh() }
+
+    // On the unfolded inner screen there is room for a rail plus a wider
+    // content column; folded, that same rail would eat a third of the width.
+    val activity = LocalContext.current as ComponentActivity
+    val widthClass = calculateWindowSizeClass(activity).widthSizeClass
+    val expanded = widthClass != WindowWidthSizeClass.Compact
+
+    if (expanded) {
+        Row(Modifier.fillMaxSize()) {
+            NavigationRail {
+                for (t in Tab.entries) {
+                    NavigationRailItem(
+                        selected = tab == t,
+                        onClick = { tab = t },
+                        icon = { Icon(painterResource(t.icon), t.label) },
+                        label = { Text(t.label) },
+                    )
                 }
             }
-        } else {
-            Column(Modifier.padding(pad).fillMaxSize().padding(20.dp)) {
-                Text("اليوم", fontSize = 14.sp, color = Color.Gray)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "$today",
-                    fontSize = 56.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text("خطوة", fontSize = 15.sp, color = Color.Gray)
-
-                Spacer(Modifier.height(28.dp))
-                Text("آخر ٧ أيام", fontSize = 14.sp, color = Color.Gray)
-                Spacer(Modifier.height(10.dp))
-
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(history) { (date, steps) ->
-                        Card(Modifier.fillMaxWidth()) {
-                            Row(
-                                Modifier.fillMaxWidth().padding(14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(formatDate(date), fontSize = 14.sp)
-                                Text("$steps", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
+            Box(Modifier.weight(1f)) { TabContent(tab, vm, state) }
+        }
+    } else {
+        Scaffold(
+            bottomBar = {
+                NavigationBar {
+                    for (t in Tab.entries) {
+                        NavigationBarItem(
+                            selected = tab == t,
+                            onClick = { tab = t },
+                            icon = { Icon(painterResource(t.icon), t.label) },
+                            label = { Text(t.label) },
+                        )
                     }
                 }
             }
+        ) { padding ->
+            Box(Modifier.padding(padding)) { TabContent(tab, vm, state) }
         }
     }
 }
 
 @Composable
-private fun PermissionScreen(modifier: Modifier = Modifier, onGrant: () -> Unit) {
-    Box(modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("خطوة يحتاج إذن عدّاد الخطوات", fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center)
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "يقرأ عدّاد الخطوات بالهاردوير مباشرة، يحسب خطواتك حتى لو ما فتحت " +
-                    "التطبيق طول اليوم — بدون الاعتماد على خدمة تشتغل بالخلفية باستمرار.",
-                fontSize = 13.sp, color = Color.Gray, textAlign = TextAlign.Center, lineHeight = 21.sp
-            )
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = onGrant) { Text("منح الإذن") }
-        }
+private fun TabContent(tab: Tab, vm: KhutwaViewModel, state: KhutwaState) {
+    when (tab) {
+        Tab.TODAY -> TodayScreen(state)
+        Tab.HISTORY -> HistoryScreen(state)
+        Tab.ANALYSIS -> AnalysisScreen(state, vm)
+        Tab.SETTINGS -> SettingsScreen(state, vm)
     }
 }
 
-private fun hasPermissionNow(context: android.content.Context): Boolean =
-    Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-        ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) ==
-        PackageManager.PERMISSION_GRANTED
-
-private fun formatDate(iso: String): String = try {
-    val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(iso)
-    SimpleDateFormat("EEE d MMM", Locale("ar")).format(d ?: Date())
-} catch (e: Exception) {
-    iso
+@Composable
+private fun PermissionScreen(onRequest: () -> Unit) {
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    "خطوة يحتاج إذن عدّاد الخطوات",
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "يقرأ عدّاد الخطوات بالهاردوير مباشرة، ويحسب خطواتك حتى لو ما فتحت " +
+                        "التطبيق طول اليوم — بدون الاعتماد على خدمة تشتغل بالخلفية باستمرار.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(24.dp))
+                Button(onClick = onRequest) { Text("منح الإذن") }
+            }
+        }
+    }
 }
