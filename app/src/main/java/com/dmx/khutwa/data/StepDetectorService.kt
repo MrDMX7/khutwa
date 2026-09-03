@@ -64,6 +64,9 @@ class StepDetectorService : Service() {
         /** Release GPS this long after the last step arrives. */
         private const val CALIBRATOR_IDLE_MS = 180_000L
 
+        /** How often to confirm the sensor listener is still registered. */
+        private const val HEALTH_CHECK_MS = 600_000L
+
         fun start(context: Context) {
             val i = Intent(context, StepDetectorService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -106,13 +109,32 @@ class StepDetectorService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Restart if the system kills us — losing the listener means losing the
         // classification for however long it takes to notice.
+        handler.removeCallbacks(healthCheck)
+        handler.postDelayed(healthCheck, HEALTH_CHECK_MS)
         return START_STICKY
+    }
+
+    /**
+     * Re-register the sensor if the listener has gone.
+     *
+     * Found in practice: the service was still in the foreground but
+     * `dumpsys sensorservice` showed no step_detector registration for this
+     * package, so classification had silently stopped while everything looked
+     * healthy. The step *total* is unaffected — that comes from the counter
+     * checkpoints — but the walk/run split would just quietly stop filling in.
+     */
+    private val healthCheck = object : Runnable {
+        override fun run() {
+            if (listener == null) registerSensor()
+            handler.postDelayed(this, HEALTH_CHECK_MS)
+        }
     }
 
     override fun onDestroy() {
         flush()
         listener?.let { sensorManager?.unregisterListener(it) }
         listener = null
+        handler.removeCallbacks(healthCheck)
         handler.removeCallbacks(stopCalibratorRunnable)
         StrideCalibrator.stop(this)
         BarometerTracker.stop(this)

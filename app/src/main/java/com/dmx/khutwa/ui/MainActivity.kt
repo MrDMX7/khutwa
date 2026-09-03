@@ -50,6 +50,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.CompositionLocalProvider
 import com.dmx.khutwa.R
 import com.dmx.khutwa.Scheduler
+import com.dmx.khutwa.data.SessionRecorder
 import com.dmx.khutwa.data.Settings
 import com.dmx.khutwa.data.StepDetectorService
 import com.dmx.khutwa.data.StepRepository
@@ -103,6 +104,9 @@ class MainActivity : ComponentActivity() {
             // this is the recovery path if the self-rescheduling chain ever broke.
             Scheduler.scheduleAll(applicationContext)
             if (Settings.isOnboarded(applicationContext)) startTracking()
+            // Heal any session left with impossible numbers by the background
+            // throttling that the foreground service now prevents.
+            SessionRecorder.repairImplausibleSessions(applicationContext)
         }
     }
 

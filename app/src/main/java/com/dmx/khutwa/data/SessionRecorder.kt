@@ -40,6 +40,15 @@ object SessionRecorder {
     /** Faster than this on foot means a GPS jump, not a sprint. */
     private const val MAX_PLAUSIBLE_SPEED_MPS = 8.0
 
+    /** Gap beyond which two fixes are not one continuous segment. */
+    private const val MAX_FIX_GAP_MS = 15_000L
+
+    /** Below this fraction of the run covered by usable fixes, GPS isn't trusted. */
+    private const val MIN_GPS_COVERAGE = 0.70
+
+    /** No human sustains more than this; anything higher is a measurement artefact. */
+    private const val MAX_PLAUSIBLE_CADENCE = 250
+
     private const val TICK_MS = 1_000L
 
     data class Phase(val name: String, val id: Int) {
@@ -84,6 +93,9 @@ object SessionRecorder {
 
     private val points = mutableListOf<RoutePoint>()
     private var gpsDistance = 0.0
+
+    /** Milliseconds of the run actually spanned by continuous, usable fixes. */
+    private var gpsCoveredMs = 0L
     private var stepsAtStart = 0
     private var sessionSteps = 0
     private var lastMinuteSteps = 0
@@ -114,6 +126,7 @@ object SessionRecorder {
         points.clear()
         cadenceSamples.clear()
         gpsDistance = 0.0
+        gpsCoveredMs = 0L
         sessionSteps = 0
         lastMinuteSteps = 0
         lastKmAnnounced = 0
@@ -145,6 +158,10 @@ object SessionRecorder {
             }, 1_200)
         }
 
+        // Must come before the location request: without a foreground service
+        // declaring the `location` type, Android throttles background fixes to
+        // almost nothing the moment the screen goes off.
+        runCatching { SessionService.start(ctx) }
         startLocation(ctx)
         handler.post(tick)
     }
@@ -166,6 +183,7 @@ object SessionRecorder {
 
         handler.removeCallbacks(tick)
         stopLocation(ctx)
+        runCatching { SessionService.stop(ctx) }
 
         val now = System.currentTimeMillis()
         val session = Session(
@@ -195,6 +213,57 @@ object SessionRecorder {
             }
             _state.value = LiveState()
             onSaved(saved)
+        }
+    }
+
+    /**
+     * Recompute a stored session from the minute buckets it spans.
+     *
+     * Sessions recorded before the foreground-service fix could hold impossible
+     * numbers — a real run came out as 600 m and an average cadence of 1,674 —
+     * because both GPS and the tick were being throttled in the background. The
+     * minute buckets for the same window come from the hardware step counter
+     * and are unaffected, so the run can be rebuilt from them exactly the way
+     * an auto-detected bout is.
+     *
+     * This only ever *derives* from recorded data; it never invents a number.
+     */
+    fun recompute(context: Context, sessionId: Long, onDone: (Session?) -> Unit = {}) {
+        StepRepository.query(context, { dao ->
+            val s = dao.session(sessionId) ?: return@query null
+            val profile = Settings.profile(context)
+            val startMin = s.startMs / 60_000L
+            val endMin = s.endMs / 60_000L
+            val minutes = dao.minutesFor(s.date).filter { it.tsMin in startMin..endMin }
+            if (minutes.isEmpty()) return@query s
+
+            val grade = BarometerTracker.gradeLookup(context, s.date)
+            val agg = com.dmx.khutwa.domain.Bouts.aggregate(minutes, profile, grade)
+            val cadences = minutes.map { it.steps }
+
+            val repaired = s.copy(
+                steps = minutes.sumOf { it.steps },
+                distanceM = agg.distanceM,
+                kcal = agg.kcalActive,
+                avgCadence = cadences.filter { it > 0 }.average().roundToInt(),
+                maxCadence = cadences.maxOrNull() ?: 0,
+                activeMinutes = agg.activeMinutes,
+            )
+            dao.updateSession(repaired)
+            repaired
+        }, onDone)
+    }
+
+    /**
+     * Repair any stored session whose numbers are physically impossible.
+     * Runs once on launch; a healthy database is a no-op.
+     */
+    fun repairImplausibleSessions(context: Context, onDone: (Int) -> Unit = {}) {
+        StepRepository.query(context, { dao ->
+            dao.sessions(200).filter { it.avgCadence > MAX_PLAUSIBLE_CADENCE }.map { it.id }
+        }) { broken ->
+            broken.forEach { recompute(context, it) }
+            onDone(broken.size)
         }
     }
 
@@ -236,19 +305,41 @@ object SessionRecorder {
         }
 
         // Cadence over the last full minute.
+        //
+        // The window has to be *checked*, not assumed. On a real run the tick
+        // stopped being scheduled while the phone was pocketed, so on resume
+        // this branch saw a 30-minute window and recorded all of its steps as
+        // one minute's cadence — producing an average of 1,674 spm. Divide by
+        // the window that actually elapsed, and never store a physically
+        // impossible value.
         var cadence = s.currentCadence
-        if (now - lastMinuteMark >= 60_000L) {
-            cadence = (sessionSteps - lastMinuteSteps).coerceAtLeast(0)
+        val windowMs = now - lastMinuteMark
+        if (windowMs >= 60_000L) {
+            val stepsInWindow = (sessionSteps - lastMinuteSteps).coerceAtLeast(0)
+            val windowMinutes = windowMs / 60_000.0
+            cadence = (stepsInWindow / windowMinutes).roundToInt().coerceIn(0, MAX_PLAUSIBLE_CADENCE)
             lastMinuteSteps = sessionSteps
             lastMinuteMark = now
-            if (cadence > 0) cadenceSamples.add(cadence)
+            if (cadence > 0) {
+                // A long window represents several minutes at this average, so
+                // weight it accordingly rather than letting one sample stand in
+                // for half an hour.
+                val weight = windowMinutes.roundToInt().coerceIn(1, 30)
+                repeat(weight) { cadenceSamples.add(cadence) }
+            }
 
             if (cadence in Cadence.MODERATE_MIN until Cadence.VIGOROUS_MIN) greyZoneMinutes++
             else greyZoneMinutes = 0
         }
 
-        // Distance: GPS while the fix is good, stride model otherwise.
-        val usingGps = gpsDistance > 50.0
+        // Distance: GPS only while its coverage is actually good.
+        //
+        // Trusting cumulative GPS blindly is what reported 600 m for a 7.3 km
+        // run — the fixes stopped arriving and the total simply froze. Coverage
+        // is now measured, and a sparse trace falls back to the stride model,
+        // which is complete because it is derived from the step counter.
+        val coverage = if (elapsed > 0) gpsCoveredMs.toDouble() / elapsed else 0.0
+        val usingGps = gpsDistance > 50.0 && coverage >= MIN_GPS_COVERAGE
         val distance = if (usingGps) gpsDistance else strideDistance()
 
         val kcal = estimateKcal(elapsed, distance)
@@ -412,12 +503,21 @@ object SessionRecorder {
         val prev = points.lastOrNull()
         if (prev != null) {
             val d = Routes.haversine(prev, p)
-            val dt = (p.tsMs - prev.tsMs) / 1000.0
-            // Reject teleports: a bad fix can otherwise add hundreds of metres
-            // in one step and inflate the whole run.
-            if (dt > 0 && d / dt <= MAX_PLAUSIBLE_SPEED_MPS) {
-                gpsDistance += d
-                points.add(p)
+            val gapMs = p.tsMs - prev.tsMs
+            val dt = gapMs / 1000.0
+            when {
+                dt <= 0 -> Unit
+                // A long gap means we lost the signal. The straight line across
+                // it is not a path the runner took, so it must not be added to
+                // the distance — but the point still belongs to the route.
+                gapMs > MAX_FIX_GAP_MS -> points.add(p)
+                // Reject teleports: a bad fix can otherwise add hundreds of
+                // metres in one step and inflate the whole run.
+                d / dt <= MAX_PLAUSIBLE_SPEED_MPS -> {
+                    gpsDistance += d
+                    gpsCoveredMs += gapMs
+                    points.add(p)
+                }
             }
         } else {
             points.add(p)

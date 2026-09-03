@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
     <!-- Used to calibrate stride length opportunistically, and to record a
          route during a session the user explicitly started. The app never runs
@@ -54,6 +55,15 @@
             android:name=".data.StepDetectorService"
             android:exported="false"
             android:foregroundServiceType="health"/>
+
+        <!-- Runs only while a session is recording. `location` is what keeps
+             GPS fixes arriving with the screen off — without it Android
+             throttled a real run down to 95 fixes in the first three minutes
+             and then nothing for 52 minutes. -->
+        <service
+            android:name=".data.SessionService"
+            android:exported="false"
+            android:foregroundServiceType="location|health"/>
 
         <service
             android:name=".tile.StepTileService"
