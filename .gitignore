@@ -1,5 +1,32 @@
+# Build output
 build/
+app/build/
 .gradle/
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Local config (machine-specific SDK path)
 local.properties
+
+# Artifacts
 *.apk
-last-run-screenshot.png
+*.aab
+*.ap_
+*.dex
+
+# Signing — never commit
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# Preserved corrupt repo from the proot migration — kept on disk, never tracked
+.git.broken/
