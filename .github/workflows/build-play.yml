@@ -1,0 +1,54 @@
+name: build-play
+
+# The Play edition is built and signed here, never on the phone: R8 needs the
+# full toolchain and the release key must not live on a device that can be
+# lost. The personal edition keeps building on-device (debug-signed).
+#
+# Secrets (set with `gh secret set`): KEYSTORE_BASE64, KEYSTORE_PASSWORD,
+# KEY_ALIAS, KEY_PASSWORD. Losing the keystore means never updating the app
+# on Play again — a copy lives in S3 as well.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore keystore
+        run: echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/khutwa-play.jks"
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon testPlayReleaseUnitTest
+
+      - name: Build signed AAB + APK
+        run: ./gradlew --no-daemon bundlePlayRelease assemblePlayRelease
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/khutwa-play.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: khutwa-play
+          path: |
+            app/build/outputs/bundle/playRelease/*.aab
+            app/build/outputs/apk/play/release/*.apk
+          if-no-files-found: error
+          retention-days: 30

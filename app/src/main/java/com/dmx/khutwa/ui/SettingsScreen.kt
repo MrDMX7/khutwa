@@ -31,7 +31,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.dmx.khutwa.data.Exporter
 import com.dmx.khutwa.data.MapTiles
-import com.dmx.khutwa.data.RootBridge
+import com.dmx.khutwa.data.RootFeatures
 import com.dmx.khutwa.data.SessionRecorder
 import com.dmx.khutwa.data.Settings
 import com.dmx.khutwa.data.StepRepository
@@ -237,8 +237,10 @@ fun SettingsScreen(state: KhutwaState, vm: KhutwaViewModel) {
         }
 
         // Root is strictly optional. Nothing in the counting path depends on it,
-        // and the su prompt only ever appears because of a tap here.
-        item {
+        // and the su prompt only ever appears because of a tap here. The Play
+        // edition compiles this block out entirely (RootFeatures.AVAILABLE is a
+        // constant false there and no su code exists in that flavor).
+        if (RootFeatures.AVAILABLE) item {
             Card {
                 SectionTitle("مزايا الروت (اختيارية)")
                 Spacer(Modifier.height(6.dp))
@@ -251,14 +253,14 @@ fun SettingsScreen(state: KhutwaState, vm: KhutwaViewModel) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(onClick = {
                         status = "جاري الطلب…"
-                        RootBridge.requestBackgroundExemption(context) { r ->
+                        RootFeatures.requestBackgroundExemption(context) { r ->
                             status = if (r.ok) "تم إعفاء التطبيق من قيود البطارية"
                             else "تعذّر — الروت غير متاح أو مرفوض"
                         }
                     }) { Text("إعفاء من قيود البطارية") }
                     OutlinedButton(onClick = {
                         status = "جاري النسخ…"
-                        RootBridge.backupDatabase(context) { r ->
+                        RootFeatures.backupDatabase(context) { r ->
                             status = if (r.ok) "نُسخت القاعدة إلى ${r.output}"
                             else "تعذّر النسخ — الروت غير متاح"
                         }

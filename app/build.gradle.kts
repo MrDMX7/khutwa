@@ -3,16 +3,49 @@ plugins {
     id("org.jetbrains.kotlin.android") version "1.9.24"
 }
 
+// The Play edition is signed on GitHub Actions with a keystore handed over
+// through the environment. On-device builds have none of these set and fall
+// back to the debug key — which is what keeps the personal install updatable
+// in place (same signer as the app already on the phone).
+val playKeystore: String? = System.getenv("KEYSTORE_PATH")
+
 android {
     namespace = "com.dmx.khutwa"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.dmx.khutwa"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 3
-        versionName = "2.1"
+        targetSdk = 35
+        versionCode = 4
+        versionName = "3.0.0-alpha1"
+    }
+
+    // One codebase, two editions. Everything in src/main is shared; the two
+    // flavor source sets differ in exactly one file, RootFeatures.kt.
+    flavorDimensions += "edition"
+    productFlavors {
+        create("personal") {
+            dimension = "edition"
+            // The id the user's phone already has — keeps years of history.
+            applicationId = "com.dmx.khutwa"
+            versionNameSuffix = "-personal"
+        }
+        create("play") {
+            dimension = "edition"
+            // Permanent on Google Play; no su, no root code compiled in.
+            applicationId = "com.elyoxe.khutwa"
+        }
+    }
+
+    signingConfigs {
+        create("play") {
+            if (playKeystore != null) {
+                storeFile = file(playKeystore)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 
     buildFeatures { compose = true }
@@ -20,10 +53,13 @@ android {
 
     buildTypes {
         release {
-            // No shrinking: R8 needs the full android.jar toolchain and this
-            // project builds on-device. Debug-signed builds are what get
-            // installed here anyway.
-            isMinifyEnabled = false
+            // Shrinking only where the full toolchain exists (CI). On-device
+            // builds skip R8 — it needs the desktop android.jar toolchain.
+            isMinifyEnabled = playKeystore != null
+            isShrinkResources = playKeystore != null
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = if (playKeystore != null) signingConfigs.getByName("play")
+                            else signingConfigs.getByName("debug")
         }
     }
 
