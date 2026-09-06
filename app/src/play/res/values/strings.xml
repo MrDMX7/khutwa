@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Play edition label. Keeps the two editions tellable apart on a phone
+         that carries both; the localized Arabic name arrives with P1. -->
+    <string name="app_name">Khutwa</string>
+</resources>
