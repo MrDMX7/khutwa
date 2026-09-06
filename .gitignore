@@ -30,3 +30,5 @@ signing.properties
 
 # Preserved corrupt repo from the proot migration — kept on disk, never tracked
 .git.broken/
+design/khutwa-v3.html
+design/__pycache__/
