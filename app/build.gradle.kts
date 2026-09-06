@@ -9,9 +9,15 @@ plugins {
 // in place (same signer as the app already on the phone).
 val playKeystore: String? = System.getenv("KEYSTORE_PATH")
 
+// compileSdk is 35 everywhere that matters (CI → Play). The phone's aapt2 is
+// the Termux aarch64 build from the Android 13 toolchain and cannot parse the
+// android-35 platform resources, so on-device builds set khutwa.compileSdk=34
+// in ~/.gradle/gradle.properties. Nothing in the app uses an API 35 symbol.
+val compileSdkOverride: Int = (project.findProperty("khutwa.compileSdk") as String?)?.toInt() ?: 35
+
 android {
     namespace = "com.dmx.khutwa"
-    compileSdk = 35
+    compileSdk = compileSdkOverride
 
     defaultConfig {
         minSdk = 26
