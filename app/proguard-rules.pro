@@ -10,3 +10,11 @@
 # Crash reports stay readable without a mapping file server
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# Compose UI 1.6 finds lifecycle-compose's LocalLifecycleOwner by reflection;
+# R8 stripped it in the first Play build and every launch died with
+# "CompositionLocal LocalLifecycleOwner not present" (2026-09-06). Keep it.
+-if public class androidx.compose.ui.platform.AndroidCompositionLocals_androidKt
+-keep public class androidx.lifecycle.compose.LocalLifecycleOwnerKt {
+    public static *** getLocalLifecycleOwner();
+}
