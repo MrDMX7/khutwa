@@ -1,0 +1,63 @@
+# Tag a release -> signed Play-edition AAB + APK -> (optionally) Play internal.
+#
+# This only calls the shared pipeline. The pipeline itself is versioned once,
+# in the infra repo: infra/actions/build-android.yml
+#
+# ⚠ ONE OWNER STEP BEFORE THIS FILE CAN RUN
+#   GitHub only resolves `uses:` for reusable workflows that live under
+#   .github/workflows/ of their own repo. In the infra repo, publish the file
+#   there once:
+#       cd ~/workspace/infra && mkdir -p .github/workflows \
+#         && cp actions/build-android.yml .github/workflows/build-android.yml
+#       # then commit + push (the owner does this; agents do not run git writes)
+#   The infra repo must also be public, OR: infra > Settings > Actions >
+#   "Access" > "Accessible from repositories owned by MrDMX7".
+#
+# ⚠ TAG COLLISION
+#   .github/workflows/build-play.yml already triggers on tags v*. Leaving both
+#   in place means two signed builds per tag. Narrow build-play.yml to
+#   `branches: [main]` (drop its `tags:`) once this file is proven.
+#
+# Secret names differ between the two files on purpose: the shared pipeline
+# standardises on KEYSTORE_B64/KEYSTORE_PASS/KEY_ALIAS/KEY_PASS, while this
+# repo's existing secrets are KEYSTORE_BASE64/KEYSTORE_PASSWORD/KEY_ALIAS/
+# KEY_PASSWORD. They are mapped explicitly below — never use `secrets: inherit`
+# here, it matches by name and would silently find nothing, producing a
+# DEBUG-SIGNED bundle that Play rejects.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: MrDMX7/infra/.github/workflows/build-android.yml@main
+    with:
+      # Flavored project: plain bundleRelease would also build personalRelease,
+      # which contains the root code and must never be signed with the upload
+      # key or shipped to Play.
+      gradle-tasks: "bundlePlayRelease assemblePlayRelease"
+      test-task: "testPlayReleaseUnitTest"
+      artifact-name: "khutwa-play"
+      artifact-paths: |
+        app/build/outputs/bundle/playRelease/*.aab
+        app/build/outputs/apk/play/release/*.apk
+        app/build/outputs/mapping/playRelease/mapping.txt
+      # app/build.gradle.kts reads `khutwa.compileSdk` (default 35) — CI wants
+      # the default, so nothing is passed here.
+      compile-sdk: ""
+      play-package-name: "com.elyoxe.khutwa"
+      play-track: "internal"
+      play-status: "draft"
+      play-aab-glob: "app/build/outputs/bundle/playRelease/*.aab"
+    secrets:
+      KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+      # Absent until the owner creates the service account; the upload step
+      # then simply does not run and the artifact is still produced.
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
