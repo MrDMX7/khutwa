@@ -3,212 +3,284 @@ package com.dmx.khutwa.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.dmx.khutwa.domain.ActivityClass
-import com.dmx.khutwa.domain.Bout
-import com.dmx.khutwa.domain.Insights
-import com.dmx.khutwa.ui.theme.Neon
+import com.dmx.khutwa.R
+import com.dmx.khutwa.domain.Metrics
+import com.dmx.khutwa.domain.MinuteBucket
+import com.dmx.khutwa.domain.Streaks
+import com.dmx.khutwa.ui.theme.Khutwa
+import com.dmx.khutwa.ui.theme.KhutwaMark
+import java.util.Calendar
 
+/**
+ * Today.
+ *
+ * One number, one accent, and — the part the old screen was missing — *when*
+ * the steps happened. The four metric cards are deliberately the smaller half
+ * of the screen: they are context for the timeline, not the point of it.
+ */
 @Composable
 fun TodayScreen(state: KhutwaState) {
     val today = state.today ?: return
+    val p = Khutwa
     val ar = state.arabicDigits
     val goal = if (today.goal > 0) today.goal else state.profile.goalSteps
     val progress = if (goal > 0) today.steps.toFloat() / goal else 0f
+    val remaining = (goal - today.steps).coerceAtLeast(0L)
+    val streak = remember(state.history, today) {
+        Streaks.compute(state.history, today.date)
+    }
+    val bins = remember(state.todayMinutes) { quarterBins(state.todayMinutes) }
+    val nowBin = Format.minuteOfDayNow() / 15
 
-    LazyColumn(
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        item {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                StepRing(
-                    progress = progress,
-                    centerLabel = Format.number(today.steps, ar),
-                    caption = "من ${Format.number(goal, ar)} خطوة",
-                    subCaption = state.ghost?.let { g ->
-                        val sign = if (g.ahead) "+" else "−"
-                        "$sign${Format.number(kotlin.math.abs(g.delta), ar)} مقارنة بـ" +
-                            " ${Format.shortDate(g.referenceDate, ar)}"
+    FieldScreen(fieldHeight = 400.dp) {
+        Spacer(Modifier.height(56.dp))
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(greetingRes()),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = p.ink,
+                )
+                Text(
+                    buildString {
+                        append(Format.longDate(today.date, ar))
+                        if (streak.current > 0) {
+                            append(" · ")
+                            append(
+                                pluralDays(streak.current, ar,
+                                    stringResource(R.string.streak_days_one),
+                                    stringResource(R.string.streak_days_few),
+                                    stringResource(R.string.streak_days_many))
+                            )
+                        }
                     },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = p.ink2,
                 )
             }
+            KhutwaMark(34.dp)
         }
 
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatTile(
-                    value = if (today.hasBreakdown) Format.km(today.distanceM, ar) else "—",
-                    label = "كيلومتر", accent = Neon.Distance, modifier = Modifier.weight(1f),
+        Spacer(Modifier.height(40.dp))
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            Column {
+                KNumber(
+                    Format.number(today.steps, ar),
+                    size = 66,
+                    weight = 300,
+                    color = p.plum,
                 )
-                StatTile(
-                    value = if (today.hasBreakdown)
-                        Format.number(state.displayedKcal().toLong(), ar) else "—",
-                    label = if (state.totalCalories) "سعرة (كلي)" else "سعرة نشاط",
-                    accent = Neon.Calories, modifier = Modifier.weight(1f),
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (remaining > 0)
+                        stringResource(R.string.today_remaining, Format.number(remaining, ar))
+                    else
+                        stringResource(R.string.today_goal_met),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = p.ink2,
                 )
             }
+            ProgressRing(
+                progress = progress,
+                label = Format.digits("${(progress * 100).toInt()}%", ar),
+            )
         }
 
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatTile(
-                    value = Format.number(today.activeMinutes, ar),
-                    label = "دقيقة نشاط", accent = Neon.Active, modifier = Modifier.weight(1f),
-                )
-                StatTile(
-                    value = if (today.floors > 0) Format.decimal(today.floors, 1, ar) else "—",
-                    label = "طابق", accent = Neon.Floors, modifier = Modifier.weight(1f),
-                )
-            }
-        }
+        Spacer(Modifier.height(38.dp))
 
-        // The split the user specifically asked for: walking steps vs running steps.
-        if (today.hasBreakdown) {
-            item {
-                Card {
-                    SectionTitle("توزيع الخطوات")
-                    Spacer(Modifier.height(12.dp))
-                    SegmentedBar(
-                        incidental = today.incidentalSteps,
-                        walk = today.walkSteps,
-                        brisk = today.briskSteps,
-                        run = today.runSteps,
-                        unclassified = today.unclassifiedSteps,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (today.runSteps > 0) {
-                            LegendDot(Neon.Run, "ركض", Format.number(today.runSteps, ar))
-                        }
-                        LegendDot(Neon.Brisk, "مشي سريع", Format.number(today.briskSteps, ar))
-                        LegendDot(Neon.Walk, "مشي", Format.number(today.walkSteps, ar))
-                        LegendDot(Neon.Incidental, "حركة متفرقة",
-                            Format.number(today.incidentalSteps, ar))
-                        if (today.unclassifiedSteps > 0) {
-                            // Honest about the gap rather than silently folding
-                            // these into "walking": the hardware counter saw them,
-                            // the detector's FIFO didn't keep their timestamps.
-                            LegendDot(Color(0xFF2C3644), "غير مصنّف",
-                                Format.number(today.unclassifiedSteps, ar))
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Card {
-                SectionTitle("نشاطك خلال اليوم")
-                Spacer(Modifier.height(14.dp))
-                HourlyChart(state.hourly, state.hourlyClass, ar)
-            }
-        }
-
-        if (state.insights.isNotEmpty()) {
-            item {
-                Card {
-                    SectionTitle("ملاحظات")
-                    Spacer(Modifier.height(10.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        for (i in state.insights.take(3)) InsightRow(i)
-                    }
-                }
-            }
-        }
-
-        if (state.bouts.isNotEmpty()) {
-            item { SectionTitle("جولات اليوم") }
-            items(state.bouts.reversed()) { bout -> BoutCard(bout, ar) }
-        }
-    }
-}
-
-@Composable
-fun Card(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-    ) {
-        Column(Modifier.padding(16.dp), content = content)
-    }
-}
-
-@Composable
-fun InsightRow(insight: Insights.Insight) {
-    val accent = when (insight.tone) {
-        Insights.Tone.GOOD -> Neon.Active
-        Insights.Tone.WARN -> Neon.Calories
-        Insights.Tone.NEUTRAL -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Row(verticalAlignment = Alignment.Top) {
-        Text("•", color = accent, style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.width(8.dp))
-        Text(
-            insight.text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
-
-@Composable
-private fun BoutCard(bout: Bout, arabicDigits: Boolean) {
-    val (label, color) = when (bout.activityClass) {
-        ActivityClass.RUN -> "ركض" to Neon.Run
-        ActivityClass.BRISK -> "مشي سريع" to Neon.Brisk
-        else -> "مشي" to Neon.Walk
-    }
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-    ) {
-        Column(Modifier.padding(14.dp)) {
+        // Crosses the field's rounded edge — the card that gives the screen depth.
+        KCard(padding = 18.dp) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Bottom,
             ) {
-                Text(label, style = MaterialTheme.typography.titleMedium, color = color)
                 Text(
-                    "${Format.clock(bout.startMs, arabicDigits)} – " +
-                        Format.clock(bout.endMs, arabicDigits),
+                    stringResource(R.string.today_timeline_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = p.ink,
+                )
+                Text(
+                    stringResource(
+                        R.string.today_peak_cadence,
+                        Format.number(today.peak1Cadence, ar),
+                    ),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = p.muted,
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("${Format.number(bout.steps, arabicDigits)} خطوة",
-                    style = MaterialTheme.typography.bodyMedium)
-                Text("${Format.km(bout.distanceM, arabicDigits)} كم",
-                    style = MaterialTheme.typography.bodyMedium)
-                Text(Format.duration(bout.durationMs, arabicDigits),
-                    style = MaterialTheme.typography.bodyMedium)
-                Text("${Format.number(bout.avgCadence, arabicDigits)} خ/د",
-                    style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(12.dp))
+            DayTimeline(bins = bins, nowBin = nowBin, arabicDigits = ar)
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MetricCard(
+                title = stringResource(R.string.metric_distance),
+                value = Format.km(today.distanceM, ar),
+                unit = stringResource(R.string.unit_km),
+                sub = stringResource(
+                    R.string.metric_distance_sub,
+                    // Stride at a typical walking cadence — the number the
+                    // distance actually rests on, shown rather than hidden.
+                    Format.number(
+                        (Metrics.strideMetres(state.profile, 110) * 100).toInt(), ar
+                    ),
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            MetricCard(
+                title = stringResource(R.string.metric_calories),
+                value = Format.number(state.displayedKcal().toLong(), ar),
+                unit = stringResource(R.string.unit_kcal),
+                sub = stringResource(R.string.metric_calories_sub),
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MetricCard(
+                title = stringResource(R.string.metric_active),
+                value = Format.number(today.activeMinutes, ar),
+                unit = stringResource(R.string.unit_minute),
+                sub = stringResource(
+                    R.string.metric_active_sub,
+                    Format.number(state.weeklyActiveMinutes, ar),
+                    Format.number(150, ar),
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            MetricCard(
+                title = stringResource(R.string.metric_brisk),
+                value = Format.number(today.briskSteps + today.runSteps, ar),
+                unit = stringResource(R.string.unit_step),
+                sub = stringResource(
+                    R.string.metric_brisk_sub,
+                    Format.digits(
+                        "${percent(today.briskSteps + today.runSteps, today.steps)}%",
+                        ar,
+                    ),
+                ),
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        KCard {
+            Text(
+                stringResource(R.string.today_split_title),
+                style = MaterialTheme.typography.titleLarge,
+                color = p.ink,
+            )
+            Spacer(Modifier.height(12.dp))
+            SplitBar(
+                parts = listOf(
+                    today.walkSteps to p.walk,
+                    today.briskSteps + today.runSteps to p.brisk,
+                    today.incidentalSteps to p.incidental,
+                    today.unclassifiedSteps to p.unclassified,
+                )
+            )
+            Spacer(Modifier.height(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                LegendItem(p.walk, stringResource(R.string.class_walk),
+                    Format.number(today.walkSteps, ar))
+                LegendItem(p.brisk, stringResource(R.string.class_brisk),
+                    Format.number(today.briskSteps + today.runSteps, ar))
+                LegendItem(p.incidental, stringResource(R.string.class_incidental),
+                    Format.number(today.incidentalSteps, ar))
+                if (today.unclassifiedSteps > 0) {
+                    LegendItem(p.unclassified, stringResource(R.string.class_unclassified),
+                        Format.number(today.unclassifiedSteps, ar))
+                }
+            }
+            if (today.unclassifiedSteps > 0) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    stringResource(R.string.today_unclassified_note),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = p.muted,
+                )
             }
         }
+
+        Spacer(Modifier.height(14.dp))
+
+        KCard(padding = 16.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(4.dp).height(34.dp))
+                Text(
+                    stringResource(R.string.today_goal_note, Format.number(goal, ar)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = p.ink2,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(28.dp))
+    }
+}
+
+private fun percent(part: Long, whole: Long): Int =
+    if (whole <= 0) 0 else ((part * 100.0) / whole).toInt()
+
+/** Arabic has three plural shapes for a day count; English needs two. */
+private fun pluralDays(n: Int, arabic: Boolean, one: String, few: String, many: String): String {
+    val digits = Format.number(n, arabic)
+    return when {
+        n == 1 -> one
+        n == 2 -> few
+        n in 3..10 -> String.format(many, digits)
+        else -> String.format(one, digits)
+    }
+}
+
+/** 96 quarter-hour totals for the day, in local time. */
+fun quarterBins(minutes: List<MinuteBucket>): IntArray {
+    val bins = IntArray(96)
+    val cal = Calendar.getInstance()
+    for (m in minutes) {
+        cal.timeInMillis = m.tsMin * 60_000L
+        val minuteOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        bins[(minuteOfDay / 15).coerceIn(0, 95)] += m.steps
+    }
+    return bins
+}
+
+private fun greetingRes(): Int {
+    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    return when {
+        hour < 5 -> R.string.greeting_night
+        hour < 12 -> R.string.greeting_morning
+        hour < 17 -> R.string.greeting_afternoon
+        else -> R.string.greeting_evening
     }
 }

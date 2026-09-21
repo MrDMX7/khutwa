@@ -1,4 +1,64 @@
 <resources>
+    <!--
+      Arabic is the default locale set: the app was Arabic-first before it was
+      anything else, and until the language switch lands (P1) these values are
+      what every device sees. P1 moves this file to values-ar/ and puts the
+      English translation here; call sites do not change.
+
+      Placeholders: %1$s is always a pre-formatted number string (already
+      thousands-separated and, when the user asks for it, in Arabic-Indic
+      digits) — never a raw integer, so no %d appears in this file.
+    -->
     <string name="app_name">خطوة</string>
     <string name="tracking_channel">تتبع الخطوات</string>
+
+    <!-- Navigation -->
+    <string name="tab_today">اليوم</string>
+    <string name="tab_sessions">جلسات</string>
+    <string name="tab_trends">اتجاهات</string>
+    <string name="tab_more">المزيد</string>
+
+    <!-- Greetings -->
+    <string name="greeting_morning">صباح الخير</string>
+    <string name="greeting_afternoon">نهارك سعيد</string>
+    <string name="greeting_evening">مساء الخير</string>
+    <string name="greeting_night">ليلة هادئة</string>
+
+    <!-- Streak -->
+    <string name="streak_days_one">سلسلة %1$s يوم</string>
+    <string name="streak_days_few">سلسلة يومين</string>
+    <string name="streak_days_many">سلسلة %1$s أيام</string>
+
+    <!-- Today -->
+    <string name="today_remaining">خطوة · بقي %1$s للهدف</string>
+    <string name="today_goal_met">خطوة · تجاوزت هدف اليوم</string>
+    <string name="today_timeline_title">يومك حتى الآن</string>
+    <string name="today_peak_cadence">ذروة %1$s خطوة/د</string>
+    <string name="today_split_title">توزيع الخطوات</string>
+    <string name="today_unclassified_note">خطوات عدّها الجهاز ولم تصل طوابعها الزمنية — المجموع صحيح، والتصنيف وحده ناقص.</string>
+    <string name="today_goal_note">هدف %1$s خطوة مبني على تحليل 57 دراسة، لا على إعلان. رقم 10,000 جاء من حملة تسويق يابانية سنة 1965.</string>
+
+    <!-- Metrics -->
+    <string name="metric_distance">مسافة</string>
+    <string name="metric_distance_sub">طول خطوتك %1$s سم</string>
+    <string name="metric_calories">سعرات نشاط</string>
+    <string name="metric_calories_sub">بمعادلة ACSM مع الميل</string>
+    <string name="metric_active">نشاط معتدل</string>
+    <string name="metric_active_sub">%1$s / %2$s هذا الأسبوع</string>
+    <string name="metric_brisk">مشي سريع</string>
+    <string name="metric_brisk_sub">%1$s من خطوات اليوم</string>
+
+    <!-- Units -->
+    <string name="unit_km">كم</string>
+    <string name="unit_kcal">سعرة</string>
+    <string name="unit_minute">د</string>
+    <string name="unit_step">خطوة</string>
+    <string name="unit_day">يوم</string>
+    <string name="unit_floor">طابق</string>
+
+    <!-- Activity classes -->
+    <string name="class_walk">مشي</string>
+    <string name="class_brisk">مشي سريع</string>
+    <string name="class_incidental">حركة متفرقة</string>
+    <string name="class_unclassified">غير مصنّف</string>
 </resources>

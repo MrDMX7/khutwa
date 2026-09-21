@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            KhutwaTheme(dark = true) {
+            KhutwaTheme {
                 // Arabic-first: force RTL regardless of device locale.
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Root(

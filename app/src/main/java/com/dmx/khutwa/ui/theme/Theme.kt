@@ -2,89 +2,162 @@ package com.dmx.khutwa.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 
 /**
- * Dark-first palette with one neon accent per metric.
+ * The palette, direction "الحقل".
  *
- * The point of a colour per metric is that the app becomes readable at a
- * glance — you learn that violet means distance and can find it without
- * reading a label. Accents are used for fills, rings and glows only; body text
- * stays near-white, because neon text on near-black is genuinely hard to read
- * regardless of how good it looks in a screenshot.
+ * Decisions here are the owner's, taken against three drawn alternatives, and
+ * they are what the whole layout depends on — change one and the screens stop
+ * agreeing with each other:
+ *
+ *  · **One accent.** Wine carries progress, actions and anything the eye should
+ *    find first. The previous version gave every metric its own neon colour;
+ *    six accents means no accent, and it read as a toy.
+ *  · **The field.** A tinted band behind the top of each screen, rounded at the
+ *    bottom, with cards crossing its edge. That crossing is the depth cue — the
+ *    reason the layout has a foreground and a background at all.
+ *  · **Ink is warm, not black.** #2A1E23 against #FBF8F7; pure black on pure
+ *    white is a browser default, not a design.
  */
-object Neon {
-    val Steps = Color(0xFF22D3EE)      // cyan
-    val Distance = Color(0xFFA78BFA)   // violet
-    val Calories = Color(0xFFFBBF24)   // amber
-    val Active = Color(0xFF34D399)     // emerald
-    val Run = Color(0xFFFB7185)        // rose
-    val Floors = Color(0xFF60A5FA)     // blue
+@Immutable
+data class KhutwaPalette(
+    val ground: Color,
+    val field: Color,
+    val card: Color,
+    val ink: Color,
+    val ink2: Color,
+    val muted: Color,
+    val wine: Color,
+    val plum: Color,
+    val rose: Color,
+    val rule: Color,
+    /** Walk / brisk / run / incidental, as tints of the one accent. */
+    val walk: Color,
+    val brisk: Color,
+    val run: Color,
+    val incidental: Color,
+    val unclassified: Color,
+    val dark: Boolean,
+)
 
-    /** Class colours for the walk/brisk/run breakdown bar. */
-    val Incidental = Color(0xFF475569)
-    val Walk = Color(0xFF22D3EE)
-    val Brisk = Color(0xFF34D399)
+val LightPalette = KhutwaPalette(
+    ground = Color(0xFFFBF8F7),
+    field = Color(0xFFF3E4EA),
+    card = Color(0xFFFFFFFF),
+    ink = Color(0xFF2A1E23),
+    ink2 = Color(0xFF66565D),
+    muted = Color(0xFF9A868E),
+    wine = Color(0xFF8E2547),
+    plum = Color(0xFF5E2138),
+    rose = Color(0xFFD9A7B8),
+    rule = Color(0xFFF0E4E8),
+    walk = Color(0xFF8E2547),
+    brisk = Color(0xFF5E2138),
+    run = Color(0xFF3A0E20),
+    incidental = Color(0xFFC9A6B2),
+    unclassified = Color(0xFFE6DADF),
+    dark = false,
+)
+
+/**
+ * The same system after dark. Not an inversion: the field stays a plum band and
+ * the accent lifts to a lighter wine, because #8E2547 on near-black fails
+ * contrast for text and reads as brown for fills.
+ */
+val DarkPalette = KhutwaPalette(
+    ground = Color(0xFF14100F),
+    field = Color(0xFF2A1A21),
+    card = Color(0xFF1F1719),
+    ink = Color(0xFFF2E9EC),
+    ink2 = Color(0xFFC0AEB5),
+    muted = Color(0xFF94818A),
+    wine = Color(0xFFD4658A),
+    plum = Color(0xFFE8A0B8),
+    rose = Color(0xFF7A4257),
+    rule = Color(0xFF2E2429),
+    walk = Color(0xFFD4658A),
+    brisk = Color(0xFFE8A0B8),
+    run = Color(0xFFF3C3D2),
+    incidental = Color(0xFF6E4B58),
+    unclassified = Color(0xFF3A2C32),
+    dark = true,
+)
+
+val LocalKhutwaPalette: ProvidableCompositionLocal<KhutwaPalette> =
+    staticCompositionLocalOf { LightPalette }
+
+/** Shorthand: `Khutwa.wine` anywhere inside the theme. */
+val Khutwa: KhutwaPalette
+    @Composable get() = LocalKhutwaPalette.current
+
+object KhutwaShape {
+    val field = 40.dp
+    val card = 24.dp
+    val cardSmall = 20.dp
+    val pill = 100.dp
 }
 
-// True black-adjacent ground so OLED pixels actually switch off.
-private val Ground = Color(0xFF0B0E13)
-private val Surface1 = Color(0xFF141922)
-private val Surface2 = Color(0xFF1C2330)
-private val OnDark = Color(0xFFE8EDF5)
-private val OnDarkMuted = Color(0xFF8A97AB)
-
-private val DarkColors = darkColorScheme(
-    primary = Neon.Steps,
-    onPrimary = Color(0xFF00232B),
-    secondary = Neon.Distance,
-    tertiary = Neon.Calories,
-    background = Ground,
-    onBackground = OnDark,
-    surface = Surface1,
-    onSurface = OnDark,
-    surfaceVariant = Surface2,
-    onSurfaceVariant = OnDarkMuted,
-    outline = Color(0xFF2C3644),
-    error = Neon.Run,
-)
-
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF0E7490),
-    secondary = Color(0xFF6D28D9),
-    tertiary = Color(0xFFB45309),
-    background = Color(0xFFF7F9FC),
-    surface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xFFEEF2F7),
-    onSurfaceVariant = Color(0xFF4B5563),
-)
-
-private val KhutwaTypography = Typography(
-    displayLarge = TextStyle(fontSize = 64.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp),
-    headlineMedium = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold),
-    titleLarge = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.Bold),
-    titleMedium = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
-    bodyLarge = TextStyle(fontSize = 15.sp, lineHeight = 23.sp),
-    bodyMedium = TextStyle(fontSize = 13.sp, lineHeight = 20.sp),
-    labelLarge = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium),
-    labelSmall = TextStyle(fontSize = 11.sp, color = OnDarkMuted),
-)
+private fun schemeOf(p: KhutwaPalette) = if (p.dark) {
+    darkColorScheme(
+        primary = p.wine, onPrimary = Color(0xFF2A0D18),
+        secondary = p.plum, onSecondary = Color(0xFF2A0D18),
+        background = p.ground, onBackground = p.ink,
+        surface = p.card, onSurface = p.ink,
+        surfaceVariant = p.field, onSurfaceVariant = p.ink2,
+        outline = p.rule, outlineVariant = p.rule,
+        error = Color(0xFFE58C7A), onError = Color(0xFF3A140C),
+    )
+} else {
+    lightColorScheme(
+        primary = p.wine, onPrimary = p.card,
+        secondary = p.plum, onSecondary = p.card,
+        background = p.ground, onBackground = p.ink,
+        surface = p.card, onSurface = p.ink,
+        surfaceVariant = p.field, onSurfaceVariant = p.ink2,
+        outline = p.rule, outlineVariant = p.rule,
+        error = Color(0xFF9A3B2E), onError = p.card,
+    )
+}
 
 @Composable
 fun KhutwaTheme(
     dark: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = if (dark) DarkColors else LightColors,
-        typography = KhutwaTypography,
-        content = content,
-    )
+    val palette = if (dark) DarkPalette else LightPalette
+    CompositionLocalProvider(LocalKhutwaPalette provides palette) {
+        MaterialTheme(
+            colorScheme = schemeOf(palette),
+            typography = KhutwaTypography,
+            content = content,
+        )
+    }
+}
+
+/**
+ * Kept only so the screens still awaiting the redesign keep compiling; each one
+ * loses its reference as it is rewritten, and this object goes with the last of
+ * them. Values are pulled onto the new palette so a half-migrated build looks
+ * consistent rather than half neon.
+ */
+@Deprecated("Use Khutwa.<colour> from the palette instead.")
+object Neon {
+    val Steps = LightPalette.wine
+    val Distance = LightPalette.plum
+    val Calories = LightPalette.wine
+    val Active = LightPalette.plum
+    val Run = LightPalette.run
+    val Floors = LightPalette.incidental
+    val Incidental = LightPalette.incidental
+    val Walk = LightPalette.walk
+    val Brisk = LightPalette.brisk
 }
