@@ -40,7 +40,7 @@ fun HistoryScreen(state: KhutwaState) {
     ) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for ((label, n) in listOf("أسبوع" to 7, "شهر" to 30, "٣ أشهر" to 90)) {
+                for ((label, n) in listOf("أسبوع" to 7, "شهر" to 30, "3 أشهر" to 90)) {
                     FilterChip(
                         selected = range == n,
                         onClick = { range = n },

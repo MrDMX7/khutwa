@@ -77,7 +77,7 @@ object Settings {
     fun setOnboarded(ctx: Context, v: Boolean) =
         prefs(ctx).edit().putBoolean(KEY_ONBOARDED, v).apply()
 
-    fun arabicDigits(ctx: Context) = prefs(ctx).getBoolean(KEY_ARABIC_DIGITS, true)
+    fun arabicDigits(ctx: Context) = prefs(ctx).getBoolean(KEY_ARABIC_DIGITS, false)
     fun setArabicDigits(ctx: Context, v: Boolean) =
         prefs(ctx).edit().putBoolean(KEY_ARABIC_DIGITS, v).apply()
 

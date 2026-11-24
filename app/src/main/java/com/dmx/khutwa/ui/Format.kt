@@ -49,7 +49,7 @@ object Format {
     fun clock(ms: Long, arabic: Boolean): String =
         digits(SimpleDateFormat("HH:mm", Locale.US).format(Date(ms)), arabic)
 
-    /** "الخميس ٣ سبتمبر" */
+    /** "الخميس 3 سبتمبر" */
     fun longDate(iso: String, arabic: Boolean): String = try {
         val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(iso)!!
         val text = SimpleDateFormat("EEEE d MMMM", Locale("ar")).format(d)
@@ -58,7 +58,7 @@ object Format {
         iso
     }
 
-    /** "الخميس ٣ سبتمبر" shortened for list rows. */
+    /** "الخميس 3 سبتمبر" shortened for list rows. */
     fun shortDate(iso: String, arabic: Boolean): String = try {
         val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(iso)!!
         digits(SimpleDateFormat("EEE d MMM", Locale("ar")).format(d), arabic)

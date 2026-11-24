@@ -212,8 +212,8 @@ private fun SessionSetup(state: KhutwaState, vm: KhutwaViewModel) {
                 SectionTitle("الإحماء")
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "٥-١٠ دقائق مشي سريع أو هرولة خفيفة. الأدلة تقول: تمارين ديناميكية، " +
-                        "لا إطالة ساكنة — الإطالة الطويلة قبل الجهد تضعف القوة ٤-٧٪.",
+                    "5-10 دقائق مشي سريع أو هرولة خفيفة. الأدلة تقول: تمارين ديناميكية، " +
+                        "لا إطالة ساكنة — الإطالة الطويلة قبل الجهد تضعف القوة 4-7%.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -235,8 +235,8 @@ private fun SessionSetup(state: KhutwaState, vm: KhutwaViewModel) {
                 SectionTitle("المدرّب الصوتي")
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "تصحيح الإيقاع، تقارير كل ٥ دقائق، تنبيه المنطقة الرمادية، " +
-                        "ومعلومات مبنية على أبحاث. يستهدف إيقاعك أنت + ٥-١٠٪ لا رقم ١٨٠.",
+                    "تصحيح الإيقاع، تقارير كل 5 دقائق، تنبيه المنطقة الرمادية، " +
+                        "ومعلومات مبنية على أبحاث. يستهدف إيقاعك أنت + 5-10% لا رقم 180.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

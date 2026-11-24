@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.dmx.khutwa.data.Settings
 import com.dmx.khutwa.domain.Profile
 import com.dmx.khutwa.domain.Sex
@@ -55,7 +56,14 @@ fun OnboardingScreen(onDone: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             item {
-                Text("خطوة", style = MaterialTheme.typography.displayLarge)
+                // Arabic is cursive: the display style's negative tracking pulls the joined letters apart and the
+                // word broke as «خطو/ة» on a 1080 px screen (Maestro run 2026-11-24). No tracking, one line.
+                Text(
+                    "خطوة",
+                    style = MaterialTheme.typography.displayLarge.copy(letterSpacing = 0.sp),
+                    maxLines = 1,
+                    softWrap = false,
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "إعداد سريع مرة وحدة، عشان المسافة والسعرات تطلع دقيقة.",
@@ -90,17 +98,17 @@ fun OnboardingScreen(onDone: () -> Unit) {
                     Spacer(Modifier.height(12.dp))
                     GoalOption(
                         selected = goal == 7000,
-                        title = "٧٬٠٠٠ خطوة",
-                        subtitle = "الرقم المدعوم بالأدلة. ميتا-تحليل ٢٠٢٥ في Lancet Public " +
-                            "Health على ١٥ دراسة وجد انخفاضاً ٤٧٪ في الوفيات عند ٧٬٠٠٠ " +
-                            "مقارنة بـ ٢٬٠٠٠ خطوة.",
+                        title = "7,000 خطوة",
+                        subtitle = "الرقم المدعوم بالأدلة. ميتا-تحليل 2025 في Lancet Public " +
+                            "Health على 15 دراسة وجد انخفاضاً 47% في الوفيات عند 7,000 " +
+                            "مقارنة بـ 2,000 خطوة.",
                         onClick = { goal = 7000 },
                     )
                     Spacer(Modifier.height(10.dp))
                     GoalOption(
                         selected = goal == 10000,
-                        title = "١٠٬٠٠٠ خطوة",
-                        subtitle = "الرقم المشهور. أصله حملة تسويقية يابانية سنة ١٩٦٥ لعدّاد " +
+                        title = "10,000 خطوة",
+                        subtitle = "الرقم المشهور. أصله حملة تسويقية يابانية سنة 1965 لعدّاد " +
                             "اسمه «مانبو-كي»، مو دراسة — لكنه هدف طموح صالح.",
                         onClick = { goal = 10000 },
                     )

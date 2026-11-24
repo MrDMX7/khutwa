@@ -41,7 +41,7 @@ fun AnalysisScreen(state: KhutwaState, vm: KhutwaViewModel) {
                     StatTile(
                         value = today?.peak30Cadence?.takeIf { it > 0 }
                             ?.let { Format.number(it, ar) } ?: "—",
-                        label = "أعلى ٣٠ دقيقة (خطوة/دقيقة)",
+                        label = "أعلى 30 دقيقة (خطوة/دقيقة)",
                         accent = Neon.Run,
                         modifier = Modifier.weight(1f),
                     )
@@ -55,7 +55,7 @@ fun AnalysisScreen(state: KhutwaState, vm: KhutwaViewModel) {
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "ذروة الـ٣٠ دقيقة هي متوسط أعلى ٣٠ دقيقة إيقاعاً في يومك (مو بالضرورة " +
+                    "ذروة الـ30 دقيقة هي متوسط أعلى 30 دقيقة إيقاعاً في يومك (مو بالضرورة " +
                         "متتالية). مقياس مُثبت لشدة النشاط، ومرتبط بانخفاض مخاطر القلب " +
                         "والأيض بشكل مستقل عن عدد الخطوات نفسه.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -65,7 +65,7 @@ fun AnalysisScreen(state: KhutwaState, vm: KhutwaViewModel) {
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "تصنيف اليوم: ${vm.peakCadenceLabel(it)}  ·  " +
-                            "١٠٠ خطوة/دقيقة = شدة معتدلة، ١٣٠ = شدة عالية",
+                            "100 خطوة/دقيقة = شدة معتدلة، 130 = شدة عالية",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -93,8 +93,8 @@ fun AnalysisScreen(state: KhutwaState, vm: KhutwaViewModel) {
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "توصية منظمة الصحة العالمية: ١٥٠ دقيقة نشاط معتدل أسبوعياً. " +
-                        "نحسب الدقيقة نشطة إذا كان إيقاعك فيها ١٠٠ خطوة/دقيقة أو أكثر.",
+                    "توصية منظمة الصحة العالمية: 150 دقيقة نشاط معتدل أسبوعياً. " +
+                        "نحسب الدقيقة نشطة إذا كان إيقاعك فيها 100 خطوة/دقيقة أو أكثر.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -108,7 +108,7 @@ fun AnalysisScreen(state: KhutwaState, vm: KhutwaViewModel) {
                 ActivityHeatmap(state.heatmap, ar)
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "آخر ٦٠ يوماً، مجمّعة حسب اليوم والساعة.",
+                    "آخر 60 يوماً، مجمّعة حسب اليوم والساعة.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

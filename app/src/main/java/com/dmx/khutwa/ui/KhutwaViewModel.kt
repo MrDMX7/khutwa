@@ -39,7 +39,7 @@ data class KhutwaState(
     val sessions: List<Session> = emptyList(),
     val weeklyActiveMinutes: Int = 0,
     val profile: Profile = Profile(),
-    val arabicDigits: Boolean = true,
+    val arabicDigits: Boolean = false,
     val totalCalories: Boolean = false,
 ) {
     // IntArray/Array fields make the generated equals() reference-based, which
